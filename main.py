@@ -3,7 +3,7 @@ import os
 import time
 import asyncio
 from dotenv import load_dotenv
-from ai_handler import generate_chirag_response
+from ai_handler import generate_chirag_response, get_ai_stats
 from keep_alive import keep_alive
 
 load_dotenv()
@@ -12,12 +12,22 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# --- Chat Algorithm Configuration ---
+# --- Bot Metrics & Configuration ---
+BOT_START_TIME = time.time()
+TOTAL_RESPONSES_SENT = 0
+
 COOLDOWN_SECONDS = 10     
 HISTORY_LIMIT = 10        
 channel_cooldowns = {}    
 
 BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
+
+def get_uptime():
+    """Calculates formatted uptime string."""
+    seconds = int(time.time() - BOT_START_TIME)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}h {minutes}m {seconds}s"
 
 @client.event
 async def on_ready():
@@ -25,6 +35,8 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    global TOTAL_RESPONSES_SENT
+
     if message.author.bot:
         return
 
@@ -38,7 +50,54 @@ async def on_message(message):
 
     is_mentioned = client.user.mentioned_in(message)
     contains_name = "chirag" in message.content.lower()
-    
+
+    # --- 1. SPECIAL COMMAND: @chirag stats ---
+    if (is_mentioned or contains_name) and "stats" in prompt.lower():
+        ai_stats = get_ai_stats()
+        latency_ms = round(client.latency * 1000)
+
+        embed = discord.Embed(
+            title="📊 Chirag Gupta — System & AI Stats",
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=client.user.display_avatar.url)
+        
+        # Performance & System
+        embed.add_field(name="⏱️ Uptime", value=get_uptime(), inline=True)
+        embed.add_field(name="📡 Latency", value=f"{latency_ms} ms", inline=True)
+        embed.add_field(name="💬 Responses Sent", value=str(TOTAL_RESPONSES_SENT), inline=True)
+        
+        # AI Engine Information
+        embed.add_field(
+            name="🤖 Active Provider", 
+            value=f"**{ai_stats['active_provider']}**", 
+            inline=True
+        )
+        embed.add_field(
+            name="🧠 Active Model", 
+            value=f"`{ai_stats['active_model']}`", 
+            inline=True
+        )
+        embed.add_field(
+            name="⚙️ Cooldown / Context", 
+            value=f"{COOLDOWN_SECONDS}s / {HISTORY_LIMIT} msgs", 
+            inline=True
+        )
+
+        # Usage Breakdown
+        counts = ai_stats['request_counts']
+        usage_text = (
+            f"• **Gemini:** {counts['gemini']} requests\n"
+            f"• **Groq:** {counts['groq']} requests\n"
+            f"• **OpenRouter:** {counts['openrouter']} requests"
+        )
+        embed.add_field(name="📈 API Usage Breakdown", value=usage_text, inline=False)
+        embed.set_footer(text="Westmore Middle School • Honor Student & Class Icon")
+
+        await message.channel.send(embed=embed)
+        return
+
+    # --- 2. REGULAR CHAT LOGIC ---
     current_time = time.time()
     last_reply_time = channel_cooldowns.get(message.channel.id, 0)
     time_since_last_reply = current_time - last_reply_time
@@ -52,10 +111,7 @@ async def on_message(message):
         should_respond = True
 
     if should_respond:
-        channel_cooldowns[message.channel.id] = time.time()
-        
         try:
-            # 1. Fetch history silently
             messages = [msg async for msg in message.channel.history(limit=HISTORY_LIMIT)]
             messages.reverse()
             
@@ -70,24 +126,23 @@ async def on_message(message):
                 if clean_text.strip():
                     conversation += f"[{speaker}]: {clean_text}\n"
 
-            # 2. Get the AI response silently
             reply = generate_chirag_response(conversation)
             
-            # 3. If successful, NOW show the typing indicator for realism
+            # Record successful response
+            channel_cooldowns[message.channel.id] = time.time()
+            TOTAL_RESPONSES_SENT += 1
+            
             async with message.channel.typing():
-                await asyncio.sleep(1.5) # Pause briefly so users see he is "typing"
+                await asyncio.sleep(1.5)
                 await message.channel.send(reply[:2000])
 
         except Exception as e:
             print(f"An error occurred: {e}")
             
-            # If he was mentioned during a crash, show typing and complain
             if is_mentioned:
                 async with message.channel.typing():
                     await asyncio.sleep(1)
                     await message.channel.send("This is highly unacceptable. I am experiencing technical difficulties.")
-            
-            # If he wasn't mentioned, he fails completely invisibly. No ghost typing!
 
 keep_alive()
 client.run(os.getenv("DISCORD_TOKEN"))
