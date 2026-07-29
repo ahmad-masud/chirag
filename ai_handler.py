@@ -71,6 +71,17 @@ def get_custom_context_list() -> list:
     """Returns the list of custom context items."""
     return CUSTOM_CONTEXT
 
+def remove_custom_context(index: int) -> bool:
+    """Removes a context item by its 1-based index (e.g., 1 for the first item)."""
+    if 0 < index <= len(CUSTOM_CONTEXT):
+        CUSTOM_CONTEXT.pop(index - 1)
+        return True
+    return False
+
+def clear_custom_context():
+    """Wipes all custom context items."""
+    CUSTOM_CONTEXT.clear()
+
 def get_full_persona() -> str:
     """Combines base persona with any added server context."""
     full_prompt = PERSONA

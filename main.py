@@ -7,7 +7,9 @@ from ai_handler import (
     generate_chirag_response, 
     get_ai_stats, 
     add_custom_context, 
-    get_custom_context_list
+    get_custom_context_list,
+    remove_custom_context,
+    clear_custom_context
 )
 from keep_alive import keep_alive
 
@@ -25,7 +27,7 @@ COOLDOWN_SECONDS = 10
 HISTORY_LIMIT = 10        
 channel_cooldowns = {}    
 
-IS_SHUTUP_MODE = False    # Tracks if the bot is in silent mode
+IS_SHUTUP_MODE = False    
 
 BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
 
@@ -55,10 +57,10 @@ async def on_message(message):
     if not prompt:
         return
 
-    is_mentioned = client.user.mentioned_in(message)
+    # Check for direct ping OR if the message is a direct reply to Chirag
+    is_mentioned = f'<@{client.user.id}>' in message.content or client.user.mentioned_in(message)
     contains_name = "chirag" in message.content.lower()
 
-    # Process command requests if Chirag was mentioned or named
     if is_mentioned or contains_name:
         clean_prompt_lower = prompt.lower()
 
@@ -73,24 +75,26 @@ async def on_message(message):
             
             embed.add_field(name="`@Chirag help`", value="Displays this manual.", inline=False)
             embed.add_field(name="`@Chirag stats`", value="Shows AI usage, ping, and uptime.", inline=False)
-            embed.add_field(name="`@Chirag shutup`", value="Forces me to only speak when directly addressed.", inline=False)
+            embed.add_field(name="`@Chirag shutup`", value="Forces me to only speak when explicitly @pinged.", inline=False)
             embed.add_field(name="`@Chirag startup`", value="Allows me to chime into conversations freely again.", inline=False)
             embed.add_field(name="`@Chirag add_context <text>`", value="Memorize a fact for this session.", inline=False)
+            embed.add_field(name="`@Chirag remove_context <number>`", value="Delete a specific memory by its number.", inline=False)
+            embed.add_field(name="`@Chirag clear_context`", value="Wipe all memorized facts completely.", inline=False)
             embed.add_field(name="`@Chirag context`", value="Read all facts I currently have memorized.", inline=False)
             
             await message.channel.send(embed=embed)
             return
 
         # --- COMMAND: shutup ---
-        elif clean_prompt_lower in ["shutup", "shut up"]:
+        elif clean_prompt_lower.startswith("shutup") or clean_prompt_lower.startswith("shut up"):
             IS_SHUTUP_MODE = True
-            await message.channel.send("Very well. I shall remain silent unless spoken to directly. Good day to you.")
+            await message.channel.send("Very well. I shall remain strictly silent unless explicitly pinged. Good day to you.")
             return
             
         # --- COMMAND: startup ---
-        elif clean_prompt_lower == "startup":
+        elif clean_prompt_lower.startswith("startup"):
             IS_SHUTUP_MODE = False
-            await message.channel.send("Excellent. I shall resume gracing this chat with my intellect.")
+            await message.channel.send("Excellent. I shall resume gracing this chat with my intellect autonomously.")
             return
 
         # --- COMMAND: add_context <text> ---
@@ -108,9 +112,29 @@ async def on_message(message):
                     "Please provide the context you would like me to remember."
                 )
             return
+            
+        # --- COMMAND: remove_context <number> ---
+        elif clean_prompt_lower.startswith("remove_context"):
+            try:
+                parts = clean_prompt_lower.split("remove_context", 1)[1].strip()
+                index = int(parts)
+                
+                if remove_custom_context(index):
+                    await message.channel.send(f"Done. I have erased item #{index} from my memory.")
+                else:
+                    await message.channel.send(f"I cannot do that. Item #{index} does not exist in my memory.")
+            except ValueError:
+                await message.channel.send("Please provide a valid number. For example: `@Chirag remove_context 2`")
+            return
+            
+        # --- COMMAND: clear_context ---
+        elif clean_prompt_lower.startswith("clear_context"):
+            clear_custom_context()
+            await message.channel.send("My memory has been completely wiped. A fresh start for my brilliant mind.")
+            return
 
         # --- COMMAND: context ---
-        elif clean_prompt_lower == "context":
+        elif clean_prompt_lower.startswith("context"):
             context_list = get_custom_context_list()
 
             embed = discord.Embed(
@@ -132,7 +156,7 @@ async def on_message(message):
             return
 
         # --- COMMAND: stats ---
-        elif clean_prompt_lower == "stats":
+        elif clean_prompt_lower.startswith("stats"):
             ai_stats = get_ai_stats()
             latency_ms = round(client.latency * 1000)
 
@@ -156,11 +180,10 @@ async def on_message(message):
                 value=f"`{ai_stats['active_model']}`", 
                 inline=True
             )
-            embed.add_field(
-                name="⚙️ Cooldown / Context", 
-                value=f"{COOLDOWN_SECONDS}s / {HISTORY_LIMIT} msgs", 
-                inline=True
-            )
+            
+            # Show if shutup mode is active in the stats
+            mode_text = "🔴 ON (Silent)" if IS_SHUTUP_MODE else "🟢 OFF (Active)"
+            embed.add_field(name="🔇 Shutup Mode", value=mode_text, inline=True)
 
             counts = ai_stats['request_counts']
             usage_text = (
@@ -182,12 +205,17 @@ async def on_message(message):
 
     should_respond = False
     
-    if is_mentioned or contains_name:
-        # Rule 1: Always respond if pinged or named, regardless of shutup mode
-        should_respond = True  
-    elif not IS_SHUTUP_MODE and not on_cooldown:
-        # Rule 2: Only chime in autonomously if NOT in shutup mode, and cooldown is met
-        should_respond = True
+    if IS_SHUTUP_MODE:
+        # If in shutup mode, completely ignore random chatter and name drops.
+        # ONLY respond if specifically pinged with an @.
+        if is_mentioned:
+            should_respond = True
+    else:
+        # If NOT in shutup mode, behave normally (name drops, cooldowns, etc.)
+        if is_mentioned or contains_name:
+            should_respond = True  
+        elif not on_cooldown:
+            should_respond = True
 
     if should_respond:
         try:
