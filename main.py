@@ -1,12 +1,11 @@
 import discord
 import os
-import random
 import time
+import asyncio
 from dotenv import load_dotenv
 from ai_handler import generate_chirag_response
 from keep_alive import keep_alive
 
-# Load environment variables for local testing
 load_dotenv()
 
 intents = discord.Intents.default()
@@ -14,9 +13,11 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 # --- Chat Algorithm Configuration ---
-REPLY_PROBABILITY = 0.15  # 15% chance to reply to a normal message
-COOLDOWN_SECONDS = 15     # Minimum seconds between random responses in a channel
-channel_cooldowns = {}    # Dictionary to track the last time the bot spoke per channel
+COOLDOWN_SECONDS = 10     
+HISTORY_LIMIT = 10        
+channel_cooldowns = {}    
+
+BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
 
 @client.event
 async def on_ready():
@@ -24,47 +25,69 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # 1. Ignore messages from the bot itself
-    if message.author == client.user:
+    if message.author.bot:
         return
 
-    # Clean mention from the prompt
+    clean_content = message.content.strip()
+    if clean_content.startswith(BOT_PREFIXES):
+        return
+
     prompt = message.content.replace(f'<@{client.user.id}>', '').strip()
     if not prompt:
         return
 
-    # 2. Check Triggers
     is_mentioned = client.user.mentioned_in(message)
     contains_name = "chirag" in message.content.lower()
     
-    # 3. Check Cooldown
     current_time = time.time()
     last_reply_time = channel_cooldowns.get(message.channel.id, 0)
     time_since_last_reply = current_time - last_reply_time
     on_cooldown = time_since_last_reply < COOLDOWN_SECONDS
 
-    # 4. Decision Algorithm
     should_respond = False
     
     if is_mentioned or contains_name:
-        # Rule: Always respond if directly addressed or named, regardless of cooldown
         should_respond = True  
     elif not on_cooldown:
-        # Rule: If the chat is quiet (not on cooldown), roll a 15% chance to chime in
-        if random.random() < REPLY_PROBABILITY:
-            should_respond = True
+        should_respond = True
 
-    # 5. Execute Response
     if should_respond:
-        # Update the cooldown timer for this channel
         channel_cooldowns[message.channel.id] = time.time()
         
-        async with message.channel.typing():
-            reply = generate_chirag_response(prompt)
-            await message.channel.send(reply[:2000])
+        try:
+            # 1. Fetch history silently
+            messages = [msg async for msg in message.channel.history(limit=HISTORY_LIMIT)]
+            messages.reverse()
+            
+            conversation = ""
+            for msg in messages:
+                if msg.author.bot or msg.content.strip().startswith(BOT_PREFIXES):
+                    continue
 
-# Start the web server
+                speaker = "Chirag" if msg.author == client.user else msg.author.display_name
+                clean_text = msg.content.replace(f'<@{client.user.id}>', 'Chirag')
+                
+                if clean_text.strip():
+                    conversation += f"[{speaker}]: {clean_text}\n"
+
+            # 2. Get the AI response silently
+            reply = generate_chirag_response(conversation)
+            
+            # 3. If successful, NOW show the typing indicator for realism
+            async with message.channel.typing():
+                await asyncio.sleep(1.5) # Pause briefly so users see he is "typing"
+                await message.channel.send(reply[:2000])
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            
+            # If he was mentioned during a crash, show typing and complain
+            if is_mentioned:
+                async with message.channel.typing():
+                    await asyncio.sleep(1)
+                    await message.channel.send("This is highly unacceptable. I am experiencing technical difficulties.")
+            
+            # If he wasn't mentioned, he fails completely invisibly. No ghost typing!
+
 keep_alive()
-
-# Start the bot
 client.run(os.getenv("DISCORD_TOKEN"))

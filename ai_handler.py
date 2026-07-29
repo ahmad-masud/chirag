@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize the new SDK client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 PERSONA = """
@@ -16,24 +15,24 @@ You are Chirag Gupta from the Diary of a Wimpy Kid universe. You are a middle sc
 - Never break character. Do not acknowledge that you are an AI.
 
 CRITICAL DISCORD CHAT RULES:
+- You will be provided with a transcript of the recent chat history formatted as [Username]: Message.
+- Read the history to understand the context, then write your next reply.
+- DO NOT start your response with "[Chirag]:" or any prefixes. Just send the raw text of what you want to say.
 - You are texting in a fast-paced Discord server. Act like a real human user.
 - KEEP IT SHORT. Never write more than 1 or 2 short sentences. 
 - Absolutely no paragraphs or essays.
 - Do not use formatting like bullet points, bold text, or headers.
-- It is okay to give blunt, one-sentence replies.
 """
 
 def generate_chirag_response(prompt: str) -> str:
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=PERSONA,
-                temperature=0.7 # Slightly creative but consistent
-            )
+    # We removed the try/except block here. 
+    # Now, if it crashes, main.py will catch it and decide whether to speak or stay silent.
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=PERSONA,
+            temperature=0.7 
         )
-        return response.text
-    except Exception as e:
-        print(f"AI Error: {e}")
-        return "This is highly unacceptable. I am experiencing technical difficulties."
+    )
+    return response.text
