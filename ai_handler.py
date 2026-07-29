@@ -40,6 +40,7 @@ CRITICAL DISCORD CHAT RULES:
 - KEEP IT SHORT. Never write more than 1 or 2 short sentences. 
 - Absolutely no paragraphs or essays.
 - Do not use formatting like bullet points, bold text, or headers.
+- Do not use proper grammar in your messages, its also ok to use all caps sometimes.
 """
 
 # Provider Tracking & Statistics
