@@ -43,6 +43,9 @@ CRITICAL DISCORD CHAT RULES:
 - Do not use proper grammar in your messages, its also ok to use all caps sometimes.
 """
 
+# Dynamic Server Context (Stored while server is running)
+CUSTOM_CONTEXT = []
+
 # Provider Tracking & Statistics
 ACTIVE_PROVIDER = "gemini"
 PROVIDER_MODELS = {
@@ -55,6 +58,27 @@ REQUEST_COUNTS = {
     "groq": 0,
     "openrouter": 0
 }
+
+def add_custom_context(note: str) -> bool:
+    """Adds a new fact or context item to Chirag's active memory."""
+    clean_note = note.strip()
+    if clean_note:
+        CUSTOM_CONTEXT.append(clean_note)
+        return True
+    return False
+
+def get_custom_context_list() -> list:
+    """Returns the list of custom context items."""
+    return CUSTOM_CONTEXT
+
+def get_full_persona() -> str:
+    """Combines base persona with any added server context."""
+    full_prompt = PERSONA
+    if CUSTOM_CONTEXT:
+        full_prompt += "\n\nCRITICAL SERVER FACTS & CONTEXT TO REMEMBER:\n"
+        for idx, item in enumerate(CUSTOM_CONTEXT, 1):
+            full_prompt += f"{idx}. {item}\n"
+    return full_prompt
 
 def get_ai_stats():
     """Returns information about the current AI configuration and usage."""
@@ -69,7 +93,7 @@ def generate_with_gemini(prompt: str) -> str:
         model=PROVIDER_MODELS["gemini"],
         contents=prompt,
         config=types.GenerateContentConfig(
-            system_instruction=PERSONA,
+            system_instruction=get_full_persona(),
             temperature=0.7 
         )
     )
@@ -79,7 +103,7 @@ def generate_with_openai_format(client, model_name: str, prompt: str) -> str:
     response = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": PERSONA},
+            {"role": "system", "content": get_full_persona()},
             {"role": "user", "content": prompt}
         ],
         temperature=0.7

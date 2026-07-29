@@ -3,7 +3,12 @@ import os
 import time
 import asyncio
 from dotenv import load_dotenv
-from ai_handler import generate_chirag_response, get_ai_stats
+from ai_handler import (
+    generate_chirag_response, 
+    get_ai_stats, 
+    add_custom_context, 
+    get_custom_context_list
+)
 from keep_alive import keep_alive
 
 load_dotenv()
@@ -51,53 +56,92 @@ async def on_message(message):
     is_mentioned = client.user.mentioned_in(message)
     contains_name = "chirag" in message.content.lower()
 
-    # --- 1. SPECIAL COMMAND: @chirag stats ---
-    if (is_mentioned or contains_name) and "stats" in prompt.lower():
-        ai_stats = get_ai_stats()
-        latency_ms = round(client.latency * 1000)
+    # Process command requests if Chirag was mentioned or named
+    if is_mentioned or contains_name:
+        clean_prompt_lower = prompt.lower()
 
-        embed = discord.Embed(
-            title="📊 Chirag Gupta — System & AI Stats",
-            color=discord.Color.blue()
-        )
-        embed.set_thumbnail(url=client.user.display_avatar.url)
-        
-        # Performance & System
-        embed.add_field(name="⏱️ Uptime", value=get_uptime(), inline=True)
-        embed.add_field(name="📡 Latency", value=f"{latency_ms} ms", inline=True)
-        embed.add_field(name="💬 Responses Sent", value=str(TOTAL_RESPONSES_SENT), inline=True)
-        
-        # AI Engine Information
-        embed.add_field(
-            name="🤖 Active Provider", 
-            value=f"**{ai_stats['active_provider']}**", 
-            inline=True
-        )
-        embed.add_field(
-            name="🧠 Active Model", 
-            value=f"`{ai_stats['active_model']}`", 
-            inline=True
-        )
-        embed.add_field(
-            name="⚙️ Cooldown / Context", 
-            value=f"{COOLDOWN_SECONDS}s / {HISTORY_LIMIT} msgs", 
-            inline=True
-        )
+        # --- COMMAND 1: @chirag add_context <text> ---
+        if "add_context" in clean_prompt_lower:
+            idx = clean_prompt_lower.find("add_context")
+            context_text = prompt[idx + len("add_context"):].strip()
 
-        # Usage Breakdown
-        counts = ai_stats['request_counts']
-        usage_text = (
-            f"• **Gemini:** {counts['gemini']} requests\n"
-            f"• **Groq:** {counts['groq']} requests\n"
-            f"• **OpenRouter:** {counts['openrouter']} requests"
-        )
-        embed.add_field(name="📈 API Usage Breakdown", value=usage_text, inline=False)
-        embed.set_footer(text="Westmore Middle School • Honor Student & Class Icon")
+            if context_text:
+                add_custom_context(context_text)
+                await message.channel.send(
+                    f"Very well. I have recorded that in my memory: \"{context_text}\""
+                )
+            else:
+                await message.channel.send(
+                    "Please provide the context you would like me to remember."
+                )
+            return
 
-        await message.channel.send(embed=embed)
-        return
+        # --- COMMAND 2: @chirag context ---
+        elif clean_prompt_lower == "context" or clean_prompt_lower.endswith("context"):
+            context_list = get_custom_context_list()
 
-    # --- 2. REGULAR CHAT LOGIC ---
+            embed = discord.Embed(
+                title="📝 Chirag Gupta — Active Context & Server Memory",
+                color=discord.Color.purple()
+            )
+            embed.set_thumbnail(url=client.user.display_avatar.url)
+
+            if not context_list:
+                embed.description = "No custom context has been added during this session."
+            else:
+                formatted_notes = "\n".join(
+                    [f"**{i+1}.** {item}" for i, item in enumerate(context_list)]
+                )
+                embed.description = formatted_notes
+
+            embed.set_footer(text="Memory persists in RAM until the bot restarts.")
+            await message.channel.send(embed=embed)
+            return
+
+        # --- COMMAND 3: @chirag stats ---
+        elif "stats" in clean_prompt_lower:
+            ai_stats = get_ai_stats()
+            latency_ms = round(client.latency * 1000)
+
+            embed = discord.Embed(
+                title="📊 Chirag Gupta — System & AI Stats",
+                color=discord.Color.blue()
+            )
+            embed.set_thumbnail(url=client.user.display_avatar.url)
+            
+            embed.add_field(name="⏱️ Uptime", value=get_uptime(), inline=True)
+            embed.add_field(name="📡 Latency", value=f"{latency_ms} ms", inline=True)
+            embed.add_field(name="💬 Responses Sent", value=str(TOTAL_RESPONSES_SENT), inline=True)
+            
+            embed.add_field(
+                name="🤖 Active Provider", 
+                value=f"**{ai_stats['active_provider']}**", 
+                inline=True
+            )
+            embed.add_field(
+                name="🧠 Active Model", 
+                value=f"`{ai_stats['active_model']}`", 
+                inline=True
+            )
+            embed.add_field(
+                name="⚙️ Cooldown / Context", 
+                value=f"{COOLDOWN_SECONDS}s / {HISTORY_LIMIT} msgs", 
+                inline=True
+            )
+
+            counts = ai_stats['request_counts']
+            usage_text = (
+                f"• **Gemini:** {counts['gemini']} requests\n"
+                f"• **Groq:** {counts['groq']} requests\n"
+                f"• **OpenRouter:** {counts['openrouter']} requests"
+            )
+            embed.add_field(name="📈 API Usage Breakdown", value=usage_text, inline=False)
+            embed.set_footer(text="Westmore Middle School • Honor Student & Class Icon")
+
+            await message.channel.send(embed=embed)
+            return
+
+    # --- REGULAR CHAT LOGIC ---
     current_time = time.time()
     last_reply_time = channel_cooldowns.get(message.channel.id, 0)
     time_since_last_reply = current_time - last_reply_time
@@ -128,7 +172,6 @@ async def on_message(message):
 
             reply = generate_chirag_response(conversation)
             
-            # Record successful response
             channel_cooldowns[message.channel.id] = time.time()
             TOTAL_RESPONSES_SENT += 1
             
