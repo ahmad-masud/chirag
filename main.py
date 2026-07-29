@@ -25,6 +25,8 @@ COOLDOWN_SECONDS = 10
 HISTORY_LIMIT = 10        
 channel_cooldowns = {}    
 
+IS_SHUTUP_MODE = False    # Tracks if the bot is in silent mode
+
 BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
 
 def get_uptime():
@@ -40,7 +42,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    global TOTAL_RESPONSES_SENT
+    global TOTAL_RESPONSES_SENT, IS_SHUTUP_MODE
 
     if message.author.bot:
         return
@@ -60,8 +62,39 @@ async def on_message(message):
     if is_mentioned or contains_name:
         clean_prompt_lower = prompt.lower()
 
-        # --- COMMAND 1: @chirag add_context <text> ---
-        if "add_context" in clean_prompt_lower:
+        # --- COMMAND: help ---
+        if clean_prompt_lower == "help":
+            embed = discord.Embed(
+                title="📚 Chirag Gupta — Command Manual",
+                description="I am highly intelligent. Here is how you may instruct me:",
+                color=discord.Color.green()
+            )
+            embed.set_thumbnail(url=client.user.display_avatar.url)
+            
+            embed.add_field(name="`@Chirag help`", value="Displays this manual.", inline=False)
+            embed.add_field(name="`@Chirag stats`", value="Shows AI usage, ping, and uptime.", inline=False)
+            embed.add_field(name="`@Chirag shutup`", value="Forces me to only speak when directly addressed.", inline=False)
+            embed.add_field(name="`@Chirag startup`", value="Allows me to chime into conversations freely again.", inline=False)
+            embed.add_field(name="`@Chirag add_context <text>`", value="Memorize a fact for this session.", inline=False)
+            embed.add_field(name="`@Chirag context`", value="Read all facts I currently have memorized.", inline=False)
+            
+            await message.channel.send(embed=embed)
+            return
+
+        # --- COMMAND: shutup ---
+        elif clean_prompt_lower in ["shutup", "shut up"]:
+            IS_SHUTUP_MODE = True
+            await message.channel.send("Very well. I shall remain silent unless spoken to directly. Good day to you.")
+            return
+            
+        # --- COMMAND: startup ---
+        elif clean_prompt_lower == "startup":
+            IS_SHUTUP_MODE = False
+            await message.channel.send("Excellent. I shall resume gracing this chat with my intellect.")
+            return
+
+        # --- COMMAND: add_context <text> ---
+        elif clean_prompt_lower.startswith("add_context"):
             idx = clean_prompt_lower.find("add_context")
             context_text = prompt[idx + len("add_context"):].strip()
 
@@ -76,8 +109,8 @@ async def on_message(message):
                 )
             return
 
-        # --- COMMAND 2: @chirag context ---
-        elif clean_prompt_lower == "context" or clean_prompt_lower.endswith("context"):
+        # --- COMMAND: context ---
+        elif clean_prompt_lower == "context":
             context_list = get_custom_context_list()
 
             embed = discord.Embed(
@@ -98,8 +131,8 @@ async def on_message(message):
             await message.channel.send(embed=embed)
             return
 
-        # --- COMMAND 3: @chirag stats ---
-        elif "stats" in clean_prompt_lower:
+        # --- COMMAND: stats ---
+        elif clean_prompt_lower == "stats":
             ai_stats = get_ai_stats()
             latency_ms = round(client.latency * 1000)
 
@@ -150,8 +183,10 @@ async def on_message(message):
     should_respond = False
     
     if is_mentioned or contains_name:
+        # Rule 1: Always respond if pinged or named, regardless of shutup mode
         should_respond = True  
-    elif not on_cooldown:
+    elif not IS_SHUTUP_MODE and not on_cooldown:
+        # Rule 2: Only chime in autonomously if NOT in shutup mode, and cooldown is met
         should_respond = True
 
     if should_respond:
