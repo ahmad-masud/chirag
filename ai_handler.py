@@ -51,8 +51,8 @@ CUSTOM_CONTEXT = []
 # Provider Tracking & Statistics
 ACTIVE_PROVIDER = "gemini"
 PROVIDER_MODELS = {
-    "gemini": "gemini-2.5-flash",
-    "groq": "llama-3.1-8b-instant",
+    "gemini": "gemini-3-flash",
+    "groq": "meta-llama/llama-4-scout-17b-16e-instruct",
     "openrouter": "openai/gpt-oss-20b:free"
 }
 REQUEST_COUNTS = {
