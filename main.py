@@ -27,7 +27,7 @@ COOLDOWN_SECONDS = 10
 HISTORY_LIMIT = 10        
 channel_cooldowns = {}    
 
-IS_SHUTUP_MODE = False    
+IS_SHUTUP_MODE = True    
 
 BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
 
