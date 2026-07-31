@@ -27,7 +27,8 @@ COOLDOWN_SECONDS = 10
 HISTORY_LIMIT = 10        
 channel_cooldowns = {}    
 
-IS_SHUTUP_MODE = True    
+# Track shutup mode per server (Guild ID -> Boolean)
+SERVER_SHUTUP_MODES = {}    
 
 BOT_PREFIXES = ('!', '>', '?', '.', '$', '-', '/', ';', '~')
 
@@ -44,7 +45,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    global TOTAL_RESPONSES_SENT, IS_SHUTUP_MODE
+    global TOTAL_RESPONSES_SENT
 
     if message.author.bot:
         return
@@ -57,7 +58,9 @@ async def on_message(message):
     if not prompt:
         return
 
-    # Check for direct ping OR if the message is a direct reply to Chirag
+    # Use the guild ID for server-specific memory (fallback to author ID for DMs)
+    server_id = message.guild.id if message.guild else message.author.id
+
     is_mentioned = f'<@{client.user.id}>' in message.content or client.user.mentioned_in(message)
     contains_name = "chirag" in message.content.lower()
 
@@ -77,24 +80,24 @@ async def on_message(message):
             embed.add_field(name="`@Chirag stats`", value="Shows AI usage, ping, and uptime.", inline=False)
             embed.add_field(name="`@Chirag shutup`", value="Forces me to only speak when explicitly @pinged.", inline=False)
             embed.add_field(name="`@Chirag startup`", value="Allows me to chime into conversations freely again.", inline=False)
-            embed.add_field(name="`@Chirag add_context <text>`", value="Memorize a fact for this session.", inline=False)
+            embed.add_field(name="`@Chirag add_context <text>`", value="Memorize a fact for this server.", inline=False)
             embed.add_field(name="`@Chirag remove_context <number>`", value="Delete a specific memory by its number.", inline=False)
-            embed.add_field(name="`@Chirag clear_context`", value="Wipe all memorized facts completely.", inline=False)
-            embed.add_field(name="`@Chirag context`", value="Read all facts I currently have memorized.", inline=False)
+            embed.add_field(name="`@Chirag clear_context`", value="Wipe all memorized facts completely for this server.", inline=False)
+            embed.add_field(name="`@Chirag context`", value="Read all facts I currently have memorized for this server.", inline=False)
             
             await message.channel.send(embed=embed)
             return
 
         # --- COMMAND: shutup ---
         elif clean_prompt_lower.startswith("shutup") or clean_prompt_lower.startswith("shut up"):
-            IS_SHUTUP_MODE = True
-            await message.channel.send("Very well. I shall remain strictly silent unless explicitly pinged. Good day to you.")
+            SERVER_SHUTUP_MODES[server_id] = True
+            await message.channel.send("Very well. I shall remain strictly silent in this server unless explicitly pinged. Good day to you.")
             return
             
         # --- COMMAND: startup ---
         elif clean_prompt_lower.startswith("startup"):
-            IS_SHUTUP_MODE = False
-            await message.channel.send("Excellent. I shall resume gracing this chat with my intellect autonomously.")
+            SERVER_SHUTUP_MODES[server_id] = False
+            await message.channel.send("Excellent. I shall resume gracing this server with my intellect autonomously.")
             return
 
         # --- COMMAND: add_context <text> ---
@@ -103,9 +106,9 @@ async def on_message(message):
             context_text = prompt[idx + len("add_context"):].strip()
 
             if context_text:
-                add_custom_context(context_text)
+                add_custom_context(server_id, context_text)
                 await message.channel.send(
-                    f"Very well. I have recorded that in my memory: \"{context_text}\""
+                    f"Very well. I have recorded that in this server's memory: \"{context_text}\""
                 )
             else:
                 await message.channel.send(
@@ -119,32 +122,32 @@ async def on_message(message):
                 parts = clean_prompt_lower.split("remove_context", 1)[1].strip()
                 index = int(parts)
                 
-                if remove_custom_context(index):
-                    await message.channel.send(f"Done. I have erased item #{index} from my memory.")
+                if remove_custom_context(server_id, index):
+                    await message.channel.send(f"Done. I have erased item #{index} from this server's memory.")
                 else:
-                    await message.channel.send(f"I cannot do that. Item #{index} does not exist in my memory.")
+                    await message.channel.send(f"I cannot do that. Item #{index} does not exist in this server's memory.")
             except ValueError:
                 await message.channel.send("Please provide a valid number. For example: `@Chirag remove_context 2`")
             return
             
         # --- COMMAND: clear_context ---
         elif clean_prompt_lower.startswith("clear_context"):
-            clear_custom_context()
-            await message.channel.send("My memory has been completely wiped. A fresh start for my brilliant mind.")
+            clear_custom_context(server_id)
+            await message.channel.send("This server's memory has been completely wiped. A fresh start for my brilliant mind.")
             return
 
         # --- COMMAND: context ---
         elif clean_prompt_lower.startswith("context"):
-            context_list = get_custom_context_list()
+            context_list = get_custom_context_list(server_id)
 
             embed = discord.Embed(
-                title="📝 Chirag Gupta — Active Context & Server Memory",
+                title="📝 Chirag Gupta — Active Context (This Server)",
                 color=discord.Color.purple()
             )
             embed.set_thumbnail(url=client.user.display_avatar.url)
 
             if not context_list:
-                embed.description = "No custom context has been added during this session."
+                embed.description = "No custom context has been added for this server during this session."
             else:
                 formatted_notes = "\n".join(
                     [f"**{i+1}.** {item}" for i, item in enumerate(context_list)]
@@ -181,8 +184,9 @@ async def on_message(message):
                 inline=True
             )
             
-            # Show if shutup mode is active in the stats
-            mode_text = "🔴 ON (Silent)" if IS_SHUTUP_MODE else "🟢 OFF (Active)"
+            # Show if shutup mode is active for this specific server
+            is_shutup = SERVER_SHUTUP_MODES.get(server_id, False)
+            mode_text = "🔴 ON (Silent)" if is_shutup else "🟢 OFF (Active)"
             embed.add_field(name="🔇 Shutup Mode", value=mode_text, inline=True)
 
             counts = ai_stats['request_counts']
@@ -203,15 +207,13 @@ async def on_message(message):
     time_since_last_reply = current_time - last_reply_time
     on_cooldown = time_since_last_reply < COOLDOWN_SECONDS
 
+    is_shutup = SERVER_SHUTUP_MODES.get(server_id, False)
     should_respond = False
     
-    if IS_SHUTUP_MODE:
-        # If in shutup mode, completely ignore random chatter and name drops.
-        # ONLY respond if specifically pinged with an @.
+    if is_shutup:
         if is_mentioned:
             should_respond = True
     else:
-        # If NOT in shutup mode, behave normally (name drops, cooldowns, etc.)
         if is_mentioned or contains_name:
             should_respond = True  
         elif not on_cooldown:
@@ -233,7 +235,8 @@ async def on_message(message):
                 if clean_text.strip():
                     conversation += f"[{speaker}]: {clean_text}\n"
 
-            reply = generate_chirag_response(conversation)
+            # Pass the server_id so the AI knows which context to load
+            reply = generate_chirag_response(server_id, conversation)
             
             channel_cooldowns[message.channel.id] = time.time()
             TOTAL_RESPONSES_SENT += 1

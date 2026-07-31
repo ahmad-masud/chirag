@@ -47,8 +47,8 @@ CRITICAL DISCORD CHAT FORMATTING:
 - Do not use formatting like bullet points, bold text, or headers.
 """
 
-# Dynamic Server Context (Stored while server is running)
-CUSTOM_CONTEXT = []
+# Dynamic Server Context (Dictionary mapped by server_id)
+SERVER_CONTEXTS = {}
 
 # Provider Tracking & Statistics
 ACTIVE_PROVIDER = "gemini"
@@ -63,35 +63,39 @@ REQUEST_COUNTS = {
     "openrouter": 0
 }
 
-def add_custom_context(note: str) -> bool:
-    """Adds a new fact or context item to Chirag's active memory."""
+def add_custom_context(server_id: int, note: str) -> bool:
+    """Adds a new fact to a specific server's memory."""
     clean_note = note.strip()
     if clean_note:
-        CUSTOM_CONTEXT.append(clean_note)
+        if server_id not in SERVER_CONTEXTS:
+            SERVER_CONTEXTS[server_id] = []
+        SERVER_CONTEXTS[server_id].append(clean_note)
         return True
     return False
 
-def get_custom_context_list() -> list:
-    """Returns the list of custom context items."""
-    return CUSTOM_CONTEXT
+def get_custom_context_list(server_id: int) -> list:
+    """Returns the list of custom context items for a specific server."""
+    return SERVER_CONTEXTS.get(server_id, [])
 
-def remove_custom_context(index: int) -> bool:
-    """Removes a context item by its 1-based index (e.g., 1 for the first item)."""
-    if 0 < index <= len(CUSTOM_CONTEXT):
-        CUSTOM_CONTEXT.pop(index - 1)
+def remove_custom_context(server_id: int, index: int) -> bool:
+    """Removes a context item by its 1-based index for a specific server."""
+    if server_id in SERVER_CONTEXTS and 0 < index <= len(SERVER_CONTEXTS[server_id]):
+        SERVER_CONTEXTS[server_id].pop(index - 1)
         return True
     return False
 
-def clear_custom_context():
-    """Wipes all custom context items."""
-    CUSTOM_CONTEXT.clear()
+def clear_custom_context(server_id: int):
+    """Wipes all custom context items for a specific server."""
+    if server_id in SERVER_CONTEXTS:
+        SERVER_CONTEXTS[server_id].clear()
 
-def get_full_persona() -> str:
-    """Combines base persona with any added server context."""
+def get_full_persona(server_id: int) -> str:
+    """Combines base persona with the specific server's context."""
     full_prompt = PERSONA
-    if CUSTOM_CONTEXT:
+    context_list = get_custom_context_list(server_id)
+    if context_list:
         full_prompt += "\n\nCRITICAL SERVER FACTS & CONTEXT TO REMEMBER:\n"
-        for idx, item in enumerate(CUSTOM_CONTEXT, 1):
+        for idx, item in enumerate(context_list, 1):
             full_prompt += f"{idx}. {item}\n"
     return full_prompt
 
@@ -103,35 +107,35 @@ def get_ai_stats():
         "request_counts": REQUEST_COUNTS
     }
 
-def generate_with_gemini(prompt: str) -> str:
+def generate_with_gemini(server_id: int, prompt: str) -> str:
     response = gemini_client.models.generate_content(
         model=PROVIDER_MODELS["gemini"],
         contents=prompt,
         config=types.GenerateContentConfig(
-            system_instruction=get_full_persona(),
+            system_instruction=get_full_persona(server_id),
             temperature=0.7 
         )
     )
     return response.text
 
-def generate_with_openai_format(client, model_name: str, prompt: str) -> str:
+def generate_with_openai_format(client, model_name: str, server_id: int, prompt: str) -> str:
     response = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": get_full_persona()},
+            {"role": "system", "content": get_full_persona(server_id)},
             {"role": "user", "content": prompt}
         ],
         temperature=0.7
     )
     return response.choices[0].message.content
 
-def generate_chirag_response(prompt: str) -> str:
+def generate_chirag_response(server_id: int, prompt: str) -> str:
     global ACTIVE_PROVIDER
     
     # 1. Gemini Block
     if ACTIVE_PROVIDER == "gemini":
         try:
-            res = generate_with_gemini(prompt)
+            res = generate_with_gemini(server_id, prompt)
             REQUEST_COUNTS["gemini"] += 1
             return res
         except Exception as e:
@@ -144,6 +148,7 @@ def generate_chirag_response(prompt: str) -> str:
             res = generate_with_openai_format(
                 groq_client, 
                 PROVIDER_MODELS["groq"], 
+                server_id,
                 prompt
             )
             REQUEST_COUNTS["groq"] += 1
@@ -158,6 +163,7 @@ def generate_chirag_response(prompt: str) -> str:
             res = generate_with_openai_format(
                 openrouter_client, 
                 PROVIDER_MODELS["openrouter"], 
+                server_id,
                 prompt
             )
             REQUEST_COUNTS["openrouter"] += 1
