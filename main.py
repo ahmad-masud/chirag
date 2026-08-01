@@ -191,6 +191,7 @@ async def on_message(message):
 
             counts = ai_stats['request_counts']
             usage_text = (
+                f"• **DeepSeek:** {counts.get('deepseek', 0)} requests\n"
                 f"• **Gemini:** {counts['gemini']} requests\n"
                 f"• **Groq:** {counts['groq']} requests\n"
                 f"• **OpenRouter:** {counts['openrouter']} requests"

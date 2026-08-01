@@ -9,6 +9,12 @@ load_dotenv()
 # --- Initialize API Clients ---
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+# DeepSeek uses the standard OpenAI format
+deepseek_client = OpenAI(
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com"
+)
+
 groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1"
@@ -50,14 +56,16 @@ CRITICAL DISCORD CHAT FORMATTING:
 # Dynamic Server Context (Dictionary mapped by server_id)
 SERVER_CONTEXTS = {}
 
-# Provider Tracking & Statistics
-ACTIVE_PROVIDER = "gemini"
+# Provider Tracking & Statistics (DeepSeek is the primary active provider)
+ACTIVE_PROVIDER = "deepseek"
 PROVIDER_MODELS = {
+    "deepseek": "deepseek-chat",
     "gemini": "gemini-3-flash",
     "groq": "meta-llama/llama-4-scout-17b-16e-instruct",
     "openrouter": "openai/gpt-oss-20b:free"
 }
 REQUEST_COUNTS = {
+    "deepseek": 0,
     "gemini": 0,
     "groq": 0,
     "openrouter": 0
@@ -132,32 +140,22 @@ def generate_with_openai_format(client, model_name: str, server_id: int, prompt:
 def generate_chirag_response(server_id: int, prompt: str) -> str:
     global ACTIVE_PROVIDER
     
-    # 1. Gemini Block
-    if ACTIVE_PROVIDER == "gemini":
-        try:
-            res = generate_with_gemini(server_id, prompt)
-            REQUEST_COUNTS["gemini"] += 1
-            return res
-        except Exception as e:
-            print(f"Gemini failed ({e}). Switching active provider to Groq...")
-            ACTIVE_PROVIDER = "groq"
-
-    # 2. Groq Block
-    if ACTIVE_PROVIDER == "groq":
+    # 1. DeepSeek Block
+    if ACTIVE_PROVIDER == "deepseek":
         try:
             res = generate_with_openai_format(
-                groq_client, 
-                PROVIDER_MODELS["groq"], 
+                deepseek_client, 
+                PROVIDER_MODELS["deepseek"], 
                 server_id,
                 prompt
             )
-            REQUEST_COUNTS["groq"] += 1
+            REQUEST_COUNTS["deepseek"] += 1
             return res
         except Exception as e:
-            print(f"Groq failed ({e}). Switching active provider to OpenRouter...")
+            print(f"DeepSeek failed ({e}). Switching active provider to OpenRouter...")
             ACTIVE_PROVIDER = "openrouter"
 
-    # 3. OpenRouter Block
+    # 2. OpenRouter Block
     if ACTIVE_PROVIDER == "openrouter":
         try:
             res = generate_with_openai_format(
@@ -169,6 +167,31 @@ def generate_chirag_response(server_id: int, prompt: str) -> str:
             REQUEST_COUNTS["openrouter"] += 1
             return res
         except Exception as e:
-            print(f"OpenRouter failed ({e}). All providers exhausted.")
+            print(f"OpenRouter failed ({e}). Switching active provider to Gemini...")
             ACTIVE_PROVIDER = "gemini"
+
+    # 3. Gemini Block
+    if ACTIVE_PROVIDER == "gemini":
+        try:
+            res = generate_with_gemini(server_id, prompt)
+            REQUEST_COUNTS["gemini"] += 1
+            return res
+        except Exception as e:
+            print(f"Gemini failed ({e}). Switching active provider to Groq...")
+            ACTIVE_PROVIDER = "groq"
+
+    # 4. Groq Block
+    if ACTIVE_PROVIDER == "groq":
+        try:
+            res = generate_with_openai_format(
+                groq_client, 
+                PROVIDER_MODELS["groq"], 
+                server_id,
+                prompt
+            )
+            REQUEST_COUNTS["groq"] += 1
+            return res
+        except Exception as e:
+            print(f"Groq failed ({e}). All providers exhausted.")
+            ACTIVE_PROVIDER = "deepseek" # Reset back to top of the chain
             raise Exception("All API providers have failed.")
