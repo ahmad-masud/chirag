@@ -97,7 +97,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         message = StubMessage(channel=channel)
         state = BotState()
 
-        handled = await handle_mention_command(message, "add_context remembers chess", 123, state, StubUser())
+        handled = await handle_mention_command(message, "add_context remembers chess", 123, state, StubUser(), StubClient())
 
         self.assertTrue(handled)
         self.assertEqual(ai_handler.get_custom_context_list(123), ["remembers chess"])
@@ -108,7 +108,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         message = StubMessage(channel=channel)
         state = BotState()
 
-        handled = await handle_mention_command(message, "shutup", 123, state, StubUser())
+        handled = await handle_mention_command(message, "shutup", 123, state, StubUser(), StubClient())
 
         self.assertTrue(handled)
         self.assertTrue(state.shutup_modes[123])

@@ -45,7 +45,7 @@ async def on_message(message):
     contains_name = "chirag" in message.content.lower()
 
     if is_mentioned or contains_name:
-        handled = await handle_mention_command(message, prompt, server_id, bot_state, client.user)
+        handled = await handle_mention_command(message, prompt, server_id, bot_state, client.user, client)
         if handled:
             return
 

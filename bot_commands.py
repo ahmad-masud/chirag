@@ -90,6 +90,7 @@ async def handle_mention_command(
     server_id: int,
     bot_state,
     bot_user: discord.ClientUser,
+    bot_client: discord.Client,
 ) -> bool:
     clean_prompt_lower = prompt.lower()
 
@@ -142,7 +143,7 @@ async def handle_mention_command(
 
     if clean_prompt_lower.startswith("stats"):
         ai_stats = get_ai_stats()
-        latency_ms = round(message.client.latency * 1000)
+        latency_ms = round(bot_client.latency * 1000)
         await message.channel.send(
             embed=build_stats_embed(
                 bot_user,
