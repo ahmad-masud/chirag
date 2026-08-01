@@ -11,8 +11,10 @@ The bot uses the `gemini-2.5-flash` model and is prompted to roleplay as **Chira
 * **Flask** - A lightweight web server used to keep the bot alive on cloud hosts.
 
 ## Project Structure
-* `main.py`: The entry point that connects to Discord and handles incoming messages.
-* `ai_handler.py`: Isolates the Gemini API logic and system instructions (persona).
+* `main.py`: The entry point that connects to Discord and routes incoming messages.
+* `bot_commands.py`: Shared command handlers and embed builders for mention-based control flow.
+* `bot_state.py`: Small runtime state container for cooldowns, uptime, and server modes.
+* `ai_handler.py`: Persona management plus provider fallback for DeepSeek, OpenRouter, Gemini, and Groq.
 * `keep_alive.py`: Runs a background Flask server so cloud services don't put the bot to sleep.
 * `requirements.txt`: Project dependencies.
 * `.env`: (Not uploaded to Git) Stores private API keys.
@@ -56,3 +58,11 @@ This bot is designed to be hosted for free using **Render** and **UptimeRobot**.
 ## Usage
 Once the bot is online and in your server, you must directly `@mention` it to get a response:
 > `@Chirag Are you there? I can't see you.`
+
+## Testing
+Run the automated test suite locally with:
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+The repository also includes a GitHub Actions workflow that runs the same command on every push and pull request.

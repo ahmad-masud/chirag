@@ -1,4 +1,7 @@
-# Secrets (CRITICAL)
+.chirag_memory.json
+.venv/
+__pycache__/
+.pytest_cache/# Secrets (CRITICAL)
 .env
 *.env
 
