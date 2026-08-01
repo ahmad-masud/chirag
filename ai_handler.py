@@ -59,7 +59,7 @@ SERVER_CONTEXTS = {}
 # Provider Tracking & Statistics (DeepSeek is the primary active provider)
 ACTIVE_PROVIDER = "deepseek"
 PROVIDER_MODELS = {
-    "deepseek": "deepseek-chat",
+    "deepseek": "deepseek-v4-flash",
     "gemini": "gemini-3-flash",
     "groq": "meta-llama/llama-4-scout-17b-16e-instruct",
     "openrouter": "openai/gpt-oss-20b:free"
